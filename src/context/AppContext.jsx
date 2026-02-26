@@ -14,6 +14,7 @@ export const AppProvider = ({ children }) => {
         // 🔹 AI Results
         stressResults: {
             summary: null,
+            prediction: null,   
             fields: {}
         },
 

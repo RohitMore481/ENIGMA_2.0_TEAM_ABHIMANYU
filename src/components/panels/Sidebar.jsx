@@ -51,6 +51,7 @@ const Sidebar = () => {
 
       setStressResults({
         summary: data.summary,
+        prediction: data.prediction,   // 🔥 ADD THIS
         fields: {
           [fieldId]: {
             stress_matrix: data.stress_matrix
@@ -63,7 +64,8 @@ const Sidebar = () => {
           id: Date.now(),
           fieldId,
           date: new Date().toLocaleString(),
-          summary: data.summary
+          summary: data.summary,
+          prediction: data.prediction   // 🔥 ADD THIS
         },
         ...prev
       ]);
