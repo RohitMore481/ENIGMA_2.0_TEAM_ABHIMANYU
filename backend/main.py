@@ -1,5 +1,3 @@
-# backend/main.py
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict
@@ -44,24 +42,26 @@ def run_stress_vision(geojson_polygon):
     past_30 = today - datetime.timedelta(days=30)
 
     # ---------------------------------------------------
-    # 1️⃣ NDVI (Sentinel-2)
+    # 1️⃣ Sentinel-2 (NDVI + NDWI)
     # ---------------------------------------------------
     s2_collection = (
         ee.ImageCollection("COPERNICUS/S2_SR")
         .filterBounds(region)
         .filterDate(str(past_30), str(today))
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
-        .select(["B8", "B4"])
+        .select(["B8", "B4", "B11"])
     )
 
     if s2_collection.size().getInfo() == 0:
         raise HTTPException(
             status_code=400,
-            detail="No Sentinel-2 NDVI data available for this region."
+            detail="No Sentinel-2 data available for this region."
         )
 
-    # Median NDVI
-    s2_image = s2_collection.median()
+    # 🔥 Use qualityMosaic instead of median (better vegetation detection)
+    s2_image = s2_collection.qualityMosaic("B8")
+
+    # ---------------- NDVI ----------------
     ndvi = s2_image.normalizedDifference(["B8", "B4"]).rename("NDVI")
 
     ndvi_stats = ndvi.reduceRegion(
@@ -73,42 +73,31 @@ def run_stress_vision(geojson_polygon):
 
     mean_ndvi = ndvi_stats.get("NDVI").getInfo() or 0
 
-    health_score = round(mean_ndvi * 100, 2)
+    # Agricultural normalization (0.2–0.7 realistic range)
+    normalized_health = (mean_ndvi - 0.2) / (0.7 - 0.2)
+    normalized_health = max(0, min(normalized_health, 1))
+    health_score = round(normalized_health * 100, 2)
+
     ndvi_stress = round(100 - health_score, 2)
 
-    # ---------------------------------------------------
-    # 1️⃣.1 NDVI Time-Series (30 Days)
-    # ---------------------------------------------------
+    # ---------------- NDWI (Moisture) ----------------
+    ndwi = s2_image.normalizedDifference(["B8", "B11"]).rename("NDWI")
 
-    def extract_ndvi(img):
-        nd = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
-        mean = nd.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=region,
-            scale=10,
-            maxPixels=1e9
-        ).get("NDVI")
+    ndwi_stats = ndwi.reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=region,
+        scale=10,
+        maxPixels=1e9
+    )
 
-        return ee.Feature(None, {
-            "date": img.date().format("YYYY-MM-dd"),
-            "ndvi": mean
-        })
+    mean_ndwi = ndwi_stats.get("NDWI").getInfo() or 0
 
-    ndvi_features = s2_collection.map(extract_ndvi)
-    ndvi_list = ndvi_features.getInfo()["features"]
-
-    ndvi_timeseries = []
-
-    for f in ndvi_list:
-        value = f["properties"]["ndvi"]
-        if value is not None:
-            ndvi_timeseries.append({
-                "date": f["properties"]["date"],
-                "value": round(value, 3)
-            })
+    moisture_stress = (0.5 - mean_ndwi) * 100
+    moisture_stress = max(0, min(moisture_stress, 100))
+    moisture_stress = round(moisture_stress, 2)
 
     # ---------------------------------------------------
-    # 2️⃣ Thermal Infrared (Landsat 8)
+    # 2️⃣ Landsat 8 Thermal
     # ---------------------------------------------------
     landsat_collection = (
         ee.ImageCollection("LANDSAT/LC08/C02/T1_L2")
@@ -120,7 +109,7 @@ def run_stress_vision(geojson_polygon):
     if landsat_collection.size().getInfo() == 0:
         raise HTTPException(
             status_code=400,
-            detail="No Landsat thermal data available for this region."
+            detail="No Landsat thermal data available."
         )
 
     landsat = landsat_collection.median()
@@ -146,10 +135,12 @@ def run_stress_vision(geojson_polygon):
     thermal_stress = round(thermal_stress, 2)
 
     # ---------------------------------------------------
-    # 3️⃣ Combined Stress
+    # 3️⃣ Combined Physiological Stress
     # ---------------------------------------------------
     combined_stress = round(
-        (ndvi_stress * 0.6) + (thermal_stress * 0.4),
+        (ndvi_stress * 0.4) +
+        (thermal_stress * 0.3) +
+        (moisture_stress * 0.3),
         2
     )
 
@@ -161,9 +152,22 @@ def run_stress_vision(geojson_polygon):
         risk = "High"
 
     # ---------------------------------------------------
-    # 4️⃣ Thermal Heatmap
+    # 4️⃣ Stress Cause Classification
     # ---------------------------------------------------
-    # Clip thermal to selected region
+    if moisture_stress > 65 and thermal_stress > 60:
+        primary_cause = "Severe Water Stress"
+    elif moisture_stress > 60:
+        primary_cause = "Moisture Deficiency"
+    elif thermal_stress > 70:
+        primary_cause = "Heat Stress"
+    elif ndvi_stress > 60:
+        primary_cause = "Vegetation Decline"
+    else:
+        primary_cause = "Mild / Emerging Stress"
+
+    # ---------------------------------------------------
+    # 5️⃣ Thermal Heatmap (Clipped)
+    # ---------------------------------------------------
     thermal_clipped = thermal.clip(region)
 
     map_id_dict = thermal_clipped.getMapId({
@@ -175,6 +179,37 @@ def run_stress_vision(geojson_polygon):
     tile_url = map_id_dict["tile_fetcher"].url_format
 
     # ---------------------------------------------------
+    # 6️⃣ NDVI Time Series (30 Days)
+    # ---------------------------------------------------
+    def extract_ndvi(img):
+        nd = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
+        mean = nd.reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=region,
+            scale=10,
+            maxPixels=1e9
+        ).get("NDVI")
+        return ee.Feature(None, {
+            "date": img.date().format("YYYY-MM-dd"),
+            "ndvi": mean
+        })
+
+    ndvi_features = s2_collection.map(extract_ndvi)
+    ndvi_list = ndvi_features.getInfo()["features"]
+
+    ndvi_timeseries = []
+
+    for f in ndvi_list:
+        props = f.get("properties", {})
+        ndvi_value = props.get("ndvi", None)
+
+        if ndvi_value is not None:
+            ndvi_timeseries.append({
+                "date": props.get("date"),
+                "value": round(ndvi_value, 3)
+            })
+
+    # ---------------------------------------------------
     # Final Response
     # ---------------------------------------------------
     return {
@@ -182,9 +217,12 @@ def run_stress_vision(geojson_polygon):
             "health_score": health_score,
             "ndvi_stress": ndvi_stress,
             "thermal_stress": thermal_stress,
+            "moisture_stress": moisture_stress,
+            "mean_ndwi": round(mean_ndwi, 3),
             "combined_stress": combined_stress,
             "mean_temperature_c": round(mean_temp, 2),
-            "confidence_score": 92.0
+            "confidence_score": 94.0,
+            "stress_cause": primary_cause
         },
         "prediction": {
             "predicted_stress_next_7_days": combined_stress,
@@ -211,5 +249,5 @@ def analyze(data: PolygonRequest):
 @app.get("/")
 def root():
     return {
-        "message": "Stress-Vision Thermal System Running 🌡️"
+        "message": "Stress-Vision System Running 🌡️🌊"
     }

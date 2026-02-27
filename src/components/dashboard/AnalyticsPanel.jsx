@@ -1,25 +1,26 @@
 import React from 'react';
 import { useAppContext } from '../../context/AppContext';
+import jsPDF from "jspdf";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   PieChart,
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip
-} from "recharts";
-import jsPDF from "jspdf";
+  Tooltip,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from 'recharts';
 import {
   TrendingUp,
   AlertTriangle,
   ShieldCheck,
   Thermometer,
   Brain,
-  Flame
+  Flame,
+  Droplets
 } from 'lucide-react';
 
 const COLORS = ['#10b981', '#ef4444'];
@@ -28,10 +29,9 @@ const AnalyticsPanel = () => {
 
   const { stressResults } = useAppContext();
 
-  const summary = stressResults?.summary;
-  const prediction = stressResults?.prediction;
-  const timeseries = stressResults?.timeseries || [];
-  const fieldsData = stressResults?.fields || {};
+  const summary = stressResults?.summary ?? null;
+  const prediction = stressResults?.prediction ?? null;
+  const timeseries = stressResults?.timeseries ?? [];
 
   if (!summary) {
     return (
@@ -43,12 +43,15 @@ const AnalyticsPanel = () => {
     );
   }
 
-  const healthScore = summary.health_score || 0;
-  const ndviStress = summary.ndvi_stress || 0;
-  const thermalStress = summary.thermal_stress || 0;
-  const combinedStress = summary.combined_stress || 0;
-  const meanTemp = summary.mean_temperature_c || 0;
-  const confidenceScore = summary.confidence_score || 0;
+  const healthScore = summary.health_score ?? 0;
+  const ndviStress = summary.ndvi_stress ?? 0;
+  const thermalStress = summary.thermal_stress ?? 0;
+  const moistureStress = summary.moisture_stress ?? 0;
+  const meanNDWI = summary.mean_ndwi ?? 0;
+  const combinedStress = summary.combined_stress ?? 0;
+  const meanTemp = summary.mean_temperature_c ?? 0;
+  const confidenceScore = summary.confidence_score ?? 0;
+  const stressCause = summary.stress_cause ?? "Unknown";
 
   const chartData = [
     { name: 'Healthy', value: 100 - combinedStress },
@@ -62,7 +65,6 @@ const AnalyticsPanel = () => {
   };
 
   const downloadPDF = () => {
-
     const doc = new jsPDF();
 
     doc.setFontSize(18);
@@ -70,31 +72,16 @@ const AnalyticsPanel = () => {
 
     doc.setFontSize(12);
     doc.text(`Date: ${new Date().toLocaleString()}`, 20, 30);
-
     doc.line(20, 35, 190, 35);
 
-    doc.setFontSize(14);
-    doc.text("Physiological Stress Analysis", 20, 45);
-
-    doc.setFontSize(12);
-    doc.text(`Vegetation Health (NDVI): ${healthScore.toFixed(2)}%`, 20, 55);
-    doc.text(`NDVI Stress: ${ndviStress.toFixed(2)}%`, 20, 65);
-    doc.text(`Thermal Stress: ${thermalStress.toFixed(2)}%`, 20, 75);
-    doc.text(`Combined Stress Index: ${combinedStress.toFixed(2)}%`, 20, 85);
-    doc.text(`Mean Canopy Temperature: ${meanTemp.toFixed(2)} °C`, 20, 95);
-    doc.text(`Confidence Score: ${confidenceScore.toFixed(2)}%`, 20, 105);
-
-    if (prediction) {
-      doc.setFontSize(14);
-      doc.text("7-Day Forecast", 20, 120);
-      doc.setFontSize(12);
-      doc.text(
-        `Projected Stress: ${prediction.predicted_stress_next_7_days}%`,
-        20,
-        130
-      );
-      doc.text(`Risk Level: ${prediction.risk_level}`, 20, 140);
-    }
+    doc.text(`NDVI Health: ${healthScore.toFixed(2)}%`, 20, 50);
+    doc.text(`NDVI Stress: ${ndviStress.toFixed(2)}%`, 20, 60);
+    doc.text(`Thermal Stress: ${thermalStress.toFixed(2)}%`, 20, 70);
+    doc.text(`Moisture Stress: ${moistureStress.toFixed(2)}%`, 20, 80);
+    doc.text(`Combined Stress: ${combinedStress.toFixed(2)}%`, 20, 90);
+    doc.text(`Stress Cause: ${stressCause}`, 20, 100);
+    doc.text(`Mean Temp: ${meanTemp.toFixed(2)} °C`, 20, 110);
+    doc.text(`Mean NDWI: ${meanNDWI.toFixed(3)}`, 20, 120);
 
     doc.save("StressVision_Report.pdf");
   };
@@ -102,12 +89,10 @@ const AnalyticsPanel = () => {
   return (
     <div className="w-96 bg-white border-l border-slate-200 p-6 flex flex-col overflow-y-auto max-h-screen">
 
-      {/* Title */}
       <h2 className="text-lg font-bold bg-gradient-to-r from-agri-green to-emerald-500 bg-clip-text text-transparent mb-4">
         Stress-Vision Analytics
       </h2>
 
-      {/* Download Button */}
       <button
         onClick={downloadPDF}
         className="mb-6 w-full bg-agri-green text-white py-2 rounded-lg hover:bg-agri-dark transition-colors text-sm font-semibold"
@@ -115,44 +100,41 @@ const AnalyticsPanel = () => {
         Download Stress Report
       </button>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      {/* Metrics */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
 
         <MetricCard
-          icon={<TrendingUp size={16} className="text-agri-green" />}
+          icon={<TrendingUp size={16} className="text-green-600" />}
           label="NDVI Health"
           value={`${healthScore.toFixed(2)}%`}
-          color="text-agri-green"
         />
 
         <MetricCard
-          icon={<AlertTriangle size={16} className="text-red-500" />}
+          icon={<AlertTriangle size={16} className="text-red-600" />}
           label="NDVI Stress"
           value={`${ndviStress.toFixed(2)}%`}
-          color="text-red-500"
         />
 
         <MetricCard
-          icon={<Flame size={16} className="text-orange-500" />}
+          icon={<Flame size={16} className="text-orange-600" />}
           label="Thermal Stress"
           value={`${thermalStress.toFixed(2)}%`}
-          color="text-orange-500"
         />
 
         <MetricCard
-          icon={<Thermometer size={16} className="text-orange-600" />}
-          label="Mean Temp"
-          value={`${meanTemp.toFixed(2)}°C`}
-          color="text-orange-600"
+          icon={<Droplets size={16} className="text-blue-600" />}
+          label="Moisture Stress"
+          value={`${moistureStress.toFixed(2)}%`}
         />
+
       </div>
 
       {/* Combined Stress */}
-      <div className="mb-8 p-5 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="mb-6 p-5 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
           <Brain size={16} className="text-purple-600" />
           <p className="text-xs text-slate-500 uppercase tracking-wider">
-            Combined Physiological Stress
+            Combined Stress Index
           </p>
         </div>
 
@@ -165,15 +147,15 @@ const AnalyticsPanel = () => {
             Risk Level: {prediction.risk_level}
           </p>
         )}
+
+        <p className="text-sm text-slate-500 mt-2">
+          Primary Driver: <span className="font-semibold">{stressCause}</span>
+        </p>
       </div>
 
       {/* Pie Chart */}
-      <div className="mb-8">
-        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-          Stress Distribution
-        </h3>
-
-        <ResponsiveContainer width="100%" height={250}>
+      <div className="mb-6">
+        <ResponsiveContainer width="100%" height={220}>
           <PieChart>
             <Pie
               data={chartData}
@@ -181,11 +163,10 @@ const AnalyticsPanel = () => {
               cy="50%"
               innerRadius={60}
               outerRadius={90}
-              paddingAngle={3}
               dataKey="value"
             >
               {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index]} />
+                <Cell key={index} fill={COLORS[index]} />
               ))}
             </Pie>
             <Tooltip />
@@ -193,14 +174,14 @@ const AnalyticsPanel = () => {
         </ResponsiveContainer>
       </div>
 
-      {/* NDVI Time Series */}
+      {/* NDVI Trend Chart */}
       {timeseries.length > 0 && (
-        <div className="mb-8">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">
-            30-Day NDVI Trend
-          </h3>
+        <div className="mb-6">
+          <p className="text-xs text-slate-500 uppercase mb-2">
+            NDVI Trend (30 Days)
+          </p>
 
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={200}>
             <LineChart data={timeseries}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" hide />
@@ -221,7 +202,7 @@ const AnalyticsPanel = () => {
       {/* Confidence */}
       <div className="mt-auto p-4 rounded-xl bg-slate-50 border">
         <div className="flex items-center gap-2 mb-2">
-          <ShieldCheck size={16} className="text-indigo-500" />
+          <ShieldCheck size={16} className="text-indigo-600" />
           <p className="text-xs text-slate-500">Confidence Score</p>
         </div>
         <p className="text-lg font-semibold text-indigo-600">
@@ -233,15 +214,13 @@ const AnalyticsPanel = () => {
   );
 };
 
-const MetricCard = ({ icon, label, value, color }) => (
+const MetricCard = ({ icon, label, value }) => (
   <div className="p-4 rounded-xl bg-slate-50 border">
     <div className="flex items-center gap-2 mb-2">
       {icon}
       <p className="text-xs text-slate-500">{label}</p>
     </div>
-    <p className={`text-2xl font-bold ${color}`}>
-      {value}
-    </p>
+    <p className="text-xl font-bold">{value}</p>
   </div>
 );
 
