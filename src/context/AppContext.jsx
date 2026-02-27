@@ -27,7 +27,8 @@ export const AppProvider = ({ children }) => {
         loadingState: false,
 
         // 🔹 UI Controls
-        isReportsOpen: false
+        isReportsOpen: false,
+        isComparisonOpen: false
     });
 
     // -----------------------------
@@ -61,7 +62,9 @@ export const AppProvider = ({ children }) => {
             // 🔹 Controls
             setAnalysisType: (type) => updateState('analysisType', type),
             setIsOverlayVisible: (visible) => updateState('isOverlayVisible', visible),
-            setIsReportsOpen: (open) => updateState('isReportsOpen', open)
+            setIsReportsOpen: (open) => updateState('isReportsOpen', open),
+
+            setIsComparisonOpen: (open) => updateState('isComparisonOpen', open)
         }}>
             {children}
         </AppContext.Provider>

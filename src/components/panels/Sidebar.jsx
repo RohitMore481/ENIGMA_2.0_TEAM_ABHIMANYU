@@ -9,7 +9,8 @@ import {
   Loader2,
   ChevronDown,
   Eye,
-  EyeOff
+  EyeOff,
+  GitCompare
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -24,7 +25,8 @@ const Sidebar = () => {
     setAnalysisType,
     isOverlayVisible,
     setIsOverlayVisible,
-    setReports
+    setReports,
+    setIsComparisonOpen
   } = useAppContext();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -38,7 +40,6 @@ const Sidebar = () => {
     try {
 
       const fieldId = selectedFields[0];
-
       const fieldObj = fields.find(f => f.id === fieldId);
 
       if (!fieldObj || !fieldObj.geometry) {
@@ -49,23 +50,25 @@ const Sidebar = () => {
 
       const data = await runAnalysis(fieldObj.geometry);
 
-      setStressResults({
+      setStressResults(prev => ({
         summary: data.summary,
-        prediction: data.prediction,   // 🔥 ADD THIS
+        prediction: data.prediction,
+        heatmap: data.heatmap,
+        timeseries: data.timeseries,
         fields: {
+          ...prev.fields,
           [fieldId]: {
-            stress_matrix: data.stress_matrix
+            summary: data.summary
           }
         }
-      });
+      }));
 
       setReports(prev => [
         {
           id: Date.now(),
           fieldId,
           date: new Date().toLocaleString(),
-          summary: data.summary,
-          prediction: data.prediction   // 🔥 ADD THIS
+          summary: data.summary
         },
         ...prev
       ]);
@@ -99,7 +102,6 @@ const Sidebar = () => {
             <button
               onClick={() => setIsOverlayVisible(!isOverlayVisible)}
               className="text-slate-400 hover:text-agri-green transition-colors"
-              title={isOverlayVisible ? "Hide Heatmap" : "Show Heatmap"}
             >
               {isOverlayVisible ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
@@ -133,6 +135,17 @@ const Sidebar = () => {
           </div>
         </div>
 
+        {/* Compare Button (Only if 2+ fields selected) */}
+        {selectedFields.length >= 2 && (
+          <button
+            onClick={() => setIsComparisonOpen(true)}
+            className="w-full flex items-center justify-center gap-2 mb-4 bg-purple-600 text-white hover:bg-purple-700 transition-colors font-semibold rounded-xl py-3 shadow-sm"
+          >
+            <GitCompare size={18} />
+            Compare Fields
+          </button>
+        )}
+
         {/* Model Type */}
         <div className="mb-8 relative">
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
@@ -143,13 +156,12 @@ const Sidebar = () => {
             type="button"
             disabled={loadingState}
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full flex items-center justify-between p-3 rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-agri-green/50 disabled:opacity-50"
+            className="w-full flex items-center justify-between p-3 rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <div className="flex items-center gap-2">
               <Layers size={16} className="text-slate-400" />
               {analysisType}
             </div>
-
             <ChevronDown
               size={16}
               className={`text-slate-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
@@ -165,11 +177,7 @@ const Sidebar = () => {
                     setAnalysisType(option);
                     setIsDropdownOpen(false);
                   }}
-                  className={`w-full text-left px-4 py-3 text-sm hover:bg-slate-50 transition-colors ${
-                    analysisType === option
-                      ? 'bg-agri-light/20 text-agri-dark font-medium'
-                      : 'text-slate-700'
-                  }`}
+                  className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 transition-colors"
                 >
                   {option}
                 </button>
@@ -183,7 +191,7 @@ const Sidebar = () => {
           <button
             onClick={handleRunAnalysis}
             disabled={selectedFields.length === 0 || loadingState}
-            className="w-full flex items-center justify-center gap-2 bg-agri-green text-white hover:bg-agri-dark transition-colors font-semibold rounded-xl py-3.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-agri-green focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 bg-agri-green text-white hover:bg-agri-dark transition-colors font-semibold rounded-xl py-3.5 shadow-sm disabled:opacity-50"
           >
             {loadingState ? (
               <>
